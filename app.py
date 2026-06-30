@@ -341,11 +341,11 @@ st.markdown(f"""
   <div class="cover-module">Computer Based Investment Analysis &nbsp;|&nbsp; Summer Semester 2026 &nbsp;|&nbsp; Ferdinand Wöhrle &nbsp;·&nbsp; Dr. Lukas Müller</div>
   <div class="cover-badge">Research Presentation · 2026</div>
   <h1>Pricing of American Options</h1>
-  <p class="cover-sub" style="text-align:center;">
+  <div style="font-size:19px;color:rgba(255,255,255,0.62);max-width:660px;margin:0 auto 36px;line-height:1.55;text-align:center;">
     How do you price the right to act early? We implement two numerical methods —
     the Cox-Ross-Rubinstein Binomial Tree and Longstaff-Schwartz LSMC —
     and apply them to a real SpaceX (SPCX) put option.
-  </p>
+  </div>
   <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:36px;">
     <span class="chip chip-blue">Binomial Tree (CRR)</span>
     <span class="chip chip-purple">LSMC Monte Carlo</span>
