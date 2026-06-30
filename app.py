@@ -1,120 +1,166 @@
 """
-American Option Pricing — Binomial Tree & LSMC with SpaceX/SPCX Case Study
+American Option Pricing — Binomial Tree & LSMC · SpaceX/SPCX Case Study
 Computer Based Investment Analysis · Frankfurt UAS · Summer 2026
-Authors: Ilyos Umurzakov, Leon Ye
-Run: streamlit run app.py
+Authors: Ilyos Umurzakov · Leon Ye
 """
 
+import base64
 import streamlit as st
 import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
+from pathlib import Path
 from scipy.stats import norm
 
-# ── PAGE CONFIG ────────────────────────────────────────────────────────────────
+# ── CONFIG ─────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="American Option Pricing · FRA UAS",
-    page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# ── COLOUR PALETTE ─────────────────────────────────────────────────────────────
-BG   = "#0d1117"
-BG2  = "#161b22"
-BD   = "#30363d"
-TXT  = "#e6edf3"
-MUT  = "#8b949e"
-BLUE = "#58a6ff"
-LBLU = "#79c0ff"
-GRN  = "#3fb950"
-RED  = "#f85149"
-ORG  = "#f0883e"
-PRP  = "#d2a8ff"
+# ── COLOURS ────────────────────────────────────────────────────────────────────
+BG   = "#0f172a"
+BG2  = "#1e293b"
+BD   = "#334155"
+TXT  = "#f1f5f9"
+MUT  = "#94a3b8"
+GOLD = "#f59e0b"
+GLD2 = "#fbbf24"
+BLUE = "#60a5fa"
+GRN  = "#34d399"
+RED  = "#f87171"
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(f"""
 <style>
-  section[data-testid="stSidebar"]       { display:none !important; }
-  button[data-testid="collapsedControl"] { display:none !important; }
-  html,body,[class*="css"]               { font-size:17px !important; }
-  h1  { font-size:2.6rem !important; color:#79c0ff !important; font-weight:800 !important; }
-  h2  { font-size:1.8rem !important; color:#a5d6ff !important; font-weight:700 !important;
-        margin-top:2rem !important; }
-  h3  { font-size:1.3rem !important; color:#e6edf3 !important; font-weight:600 !important; }
-  p,li{ font-size:1.05rem !important; line-height:1.75 !important; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
 
-  .kpi { background:linear-gradient(135deg,#1a2744 0%,#0d1117 100%);
-         border:1px solid #1f6feb; border-radius:12px;
-         padding:22px 16px; text-align:center; margin-bottom:8px; }
-  .kpi-val { font-size:2.2rem; font-weight:800; color:#58a6ff; }
-  .kpi-lbl { font-size:0.85rem; color:#8b949e; margin-top:6px; }
+  section[data-testid="stSidebar"]       {{ display:none !important; }}
+  button[data-testid="collapsedControl"] {{ display:none !important; }}
+  html, body, [class*="css"]             {{ background:{BG} !important; font-family:'Inter',sans-serif !important; }}
 
-  .card { background:#161b22; border:1px solid #30363d; border-radius:12px;
-          padding:20px 24px; margin:8px 0; }
-  .card-h { font-size:1.1rem; font-weight:700; color:#79c0ff; margin-bottom:10px; }
-  .card-b { font-size:1.0rem; color:#c9d1d9; line-height:1.7; }
+  h1,h2,h3,h4,p,li,span,div {{ color:{TXT}; }}
 
-  .find { background:#0d2a1a; border-left:5px solid #3fb950; border-radius:0 8px 8px 0;
-          padding:14px 18px; margin:12px 0; color:#aff1b6; font-size:1.05rem; }
-  .warn { background:#2a1a0d; border-left:5px solid #f0883e; border-radius:0 8px 8px 0;
-          padding:14px 18px; margin:12px 0; color:#ffa657; font-size:1.05rem; }
-  .info { background:#0d1f3a; border-left:5px solid #58a6ff; border-radius:0 8px 8px 0;
-          padding:14px 18px; margin:12px 0; color:#bfdbfe; font-size:1.05rem; }
-  .ans  { background:#1a0d2a; border-left:5px solid #d2a8ff; border-radius:0 8px 8px 0;
-          padding:16px 20px; margin:18px 0; color:#e2c8ff; font-size:1.05rem; }
+  /* nav pill buttons */
+  div[data-testid="stHorizontalBlock"] button {{
+    background:{BG2} !important;
+    border:1px solid {BD} !important;
+    border-radius:6px !important;
+    color:{MUT} !important;
+    font-size:0.82rem !important;
+    font-weight:600 !important;
+    letter-spacing:0.04em !important;
+    text-transform:uppercase !important;
+    transition:all .15s !important;
+  }}
+  div[data-testid="stHorizontalBlock"] button:hover {{
+    border-color:{GOLD} !important;
+    color:{GOLD} !important;
+  }}
+  div[data-testid="stHorizontalBlock"] button[kind="primary"] {{
+    background:{GOLD}22 !important;
+    border-color:{GOLD} !important;
+    color:{GOLD} !important;
+  }}
 
-  .step { background:#161b22; border:1px solid #30363d; border-radius:10px;
-          padding:16px 20px; margin:6px 0; }
-  .step-num { font-size:0.75rem; color:#58a6ff; text-transform:uppercase;
-              letter-spacing:3px; font-weight:700; margin-bottom:6px; }
-  .step-head { font-size:1.1rem; font-weight:700; color:#e6edf3; margin-bottom:8px; }
-  .step-body { font-size:0.97rem; color:#c9d1d9; line-height:1.65; }
+  .metric {{
+    background:{BG2};
+    border:1px solid {BD};
+    border-radius:10px;
+    padding:28px 20px;
+    text-align:center;
+  }}
+  .metric-val {{
+    font-size:2.4rem;
+    font-weight:800;
+    color:{GOLD};
+    line-height:1;
+  }}
+  .metric-lbl {{
+    font-size:0.78rem;
+    font-weight:600;
+    color:{MUT};
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    margin-top:10px;
+  }}
+
+  .step-row {{
+    display:flex;
+    align-items:flex-start;
+    gap:20px;
+    background:{BG2};
+    border:1px solid {BD};
+    border-radius:10px;
+    padding:20px 24px;
+    margin:8px 0;
+  }}
+  .step-num {{
+    font-size:1.6rem;
+    font-weight:800;
+    color:{GOLD};
+    min-width:36px;
+    line-height:1;
+    margin-top:2px;
+  }}
+  .step-head {{ font-size:1.05rem; font-weight:700; color:{TXT}; margin-bottom:4px; }}
+  .step-body {{ font-size:0.92rem; color:{MUT}; line-height:1.6; }}
+
+  .highlight {{
+    background:{GOLD}18;
+    border:1px solid {GOLD}55;
+    border-radius:10px;
+    padding:20px 26px;
+    margin:12px 0;
+    font-size:1.05rem;
+    color:{TXT};
+    line-height:1.7;
+  }}
+
+  .section-label {{
+    font-size:0.7rem;
+    font-weight:700;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:{GOLD};
+    margin-bottom:6px;
+  }}
+
+  hr.divider {{
+    border:none;
+    border-top:1px solid {BD};
+    margin:1.2rem 0;
+  }}
 </style>
 """, unsafe_allow_html=True)
 
-# ── NAVIGATION ─────────────────────────────────────────────────────────────────
-SLIDES = [
-    "📖  Introduction",
-    "🌳  Binomial Tree",
-    "🎲  LSMC",
-    "✅  Base Case",
-    "🚀  SpaceX/SPCX",
-    "📌  Conclusion",
-]
+# ── LOGO HELPER ────────────────────────────────────────────────────────────────
+def logo_tag(height=70):
+    p = Path(__file__).parent / "frauas_logo.png"
+    if p.exists():
+        b64 = base64.b64encode(p.read_bytes()).decode()
+        return (f'<div style="background:white;display:inline-block;'
+                f'padding:10px 18px;border-radius:10px;">'
+                f'<img src="data:image/png;base64,{b64}" style="height:{height}px;"></div>')
+    return ""
 
-if "slide" not in st.session_state:
-    st.session_state.slide = 0
-
-nav_cols = st.columns(len(SLIDES))
-for i, (col, label) in enumerate(zip(nav_cols, SLIDES)):
-    with col:
-        if st.button(label, use_container_width=True, key=f"nav_{i}",
-                     type="primary" if st.session_state.slide == i else "secondary"):
-            st.session_state.slide = i
-            st.rerun()
-
-st.markdown("<hr style='border:1px solid #30363d;margin:0.4rem 0 1.5rem 0;'>",
-            unsafe_allow_html=True)
-
-slide = st.session_state.slide
-
-# ── PLOTLY LAYOUT HELPER ───────────────────────────────────────────────────────
-def lo(h=460, title="", xlab="", ylab=""):
+# ── PLOTLY LAYOUT ──────────────────────────────────────────────────────────────
+def lo(h=420, title="", xlab="", ylab=""):
     d = dict(
         paper_bgcolor=BG, plot_bgcolor=BG2,
-        font=dict(color=TXT, size=13),
-        xaxis=dict(gridcolor=BD, linecolor="#484f58", linewidth=1, color=TXT,
-                   title=xlab, title_font=dict(size=13)),
-        yaxis=dict(gridcolor=BD, linecolor="#484f58", linewidth=1, color=TXT,
-                   title=ylab, title_font=dict(size=13)),
-        legend=dict(bgcolor="rgba(22,27,34,0.92)", bordercolor=BD,
-                    borderwidth=1, font=dict(size=12, color=TXT)),
-        margin=dict(l=65, r=25, t=55 if title else 30, b=60),
-        height=h, hovermode="x unified",
+        font=dict(color=TXT, family="Inter", size=12),
+        xaxis=dict(gridcolor=BD, linecolor=BD, color=TXT,
+                   title=dict(text=xlab, font=dict(size=12))),
+        yaxis=dict(gridcolor=BD, linecolor=BD, color=TXT,
+                   title=dict(text=ylab, font=dict(size=12))),
+        legend=dict(bgcolor=BG2, bordercolor=BD, borderwidth=1,
+                    font=dict(size=11, color=TXT)),
+        margin=dict(l=60, r=20, t=55 if title else 28, b=55),
+        height=h,
+        hovermode="x unified",
     )
     if title:
-        d["title"] = dict(text=title, font=dict(size=15, color=LBLU))
+        d["title"] = dict(text=title, font=dict(size=14, color=GLD2))
     return d
 
 # ── PRICING FUNCTIONS ──────────────────────────────────────────────────────────
@@ -129,9 +175,9 @@ def binomial_price(S0, K, r, sigma, T, N, american=True):
     for step in range(N - 1, -1, -1):
         nv = []
         for j in range(step + 1):
-            stk  = S0 * u**j * d**(step - j)
+            s    = S0 * u**j * d**(step - j)
             cont = disc * (p * vals[j + 1] + (1 - p) * vals[j])
-            ex   = max(K - stk, 0)
+            ex   = max(K - s, 0)
             nv.append(max(cont, ex) if american else cont)
         vals = nv
     return vals[0]
@@ -146,41 +192,41 @@ def black_scholes_put(S, K, r, sigma, T):
 def simulate_paths(S0, r, sigma, T, N, num_paths, seed=42):
     rng   = np.random.default_rng(seed)
     dt    = T / N
-    paths = np.zeros((num_paths, N + 1))
-    paths[:, 0] = S0
+    p     = np.zeros((num_paths, N + 1))
+    p[:, 0] = S0
     for t in range(1, N + 1):
         z = rng.standard_normal(num_paths)
-        paths[:, t] = paths[:, t - 1] * np.exp(
-            (r - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * z)
-    return paths
+        p[:, t] = p[:, t-1] * np.exp((r - 0.5*sigma**2)*dt + sigma*np.sqrt(dt)*z)
+    return p
 
 @st.cache_data
 def lsmc_put(S0, K, r, sigma, T, N, num_paths, seed=42):
-    paths     = simulate_paths(S0, r, sigma, T, N, num_paths, seed)
-    dt        = T / N
-    disc      = np.exp(-r * dt)
-    cashflows = np.maximum(K - paths[:, -1], 0)
+    paths = simulate_paths(S0, r, sigma, T, N, num_paths, seed)
+    dt    = T / N
+    disc  = np.exp(-r * dt)
+    cf    = np.maximum(K - paths[:, -1], 0)
     for t in range(N - 1, 0, -1):
-        cashflows *= disc
-        stock    = paths[:, t]
-        exercise = np.maximum(K - stock, 0)
-        itm      = exercise > 0
+        cf  *= disc
+        stk  = paths[:, t]
+        ex   = np.maximum(K - stk, 0)
+        itm  = ex > 0
         if itm.sum() < 3:
             continue
-        x    = stock[itm]
+        x    = stk[itm]
         X    = np.column_stack([np.ones_like(x), x, x**2])
-        beta = np.linalg.lstsq(X, cashflows[itm], rcond=None)[0]
+        beta = np.linalg.lstsq(X, cf[itm], rcond=None)[0]
         cont = X @ beta
-        idx  = np.where(itm)[0][exercise[itm] > cont]
-        cashflows[idx] = exercise[idx]
-    return np.mean(cashflows * disc)
+        idx  = np.where(itm)[0][ex[itm] > cont]
+        cf[idx] = ex[idx]
+    return np.mean(cf * disc)
 
 @st.cache_data
-def implied_vol(market_price, S0, K, r, T, N):
+def implied_vol(mkt, S0, K, r, T, N):
     lo, hi = 0.01, 3.00
     for _ in range(80):
         mid = (lo + hi) / 2
-        if binomial_price(S0, K, r, mid, T, N) < market_price:
+        (lo if binomial_price(S0, K, r, mid, T, N) < mkt else hi)
+        if binomial_price(S0, K, r, mid, T, N) < mkt:
             lo = mid
         else:
             hi = mid
@@ -193,642 +239,546 @@ def small_tree(S0, K, r, sigma, T, N_vis=4):
     d    = 1 / u
     p    = (np.exp(r * dt) - d) / (u - d)
     disc = np.exp(-r * dt)
-    stock    = [[S0 * u**j * d**(t - j) for j in range(t + 1)] for t in range(N_vis + 1)]
-    values   = [None] * (N_vis + 1)
-    exercise = [None] * (N_vis + 1)
-    values[-1]   = [max(K - s, 0) for s in stock[-1]]
-    exercise[-1] = [False] * (N_vis + 1)
-    current = values[-1]
+    stk  = [[S0 * u**j * d**(t-j) for j in range(t+1)] for t in range(N_vis+1)]
+    vals = [None] * (N_vis + 1)
+    ex   = [None] * (N_vis + 1)
+    vals[-1] = [max(K - s, 0) for s in stk[-1]]
+    ex[-1]   = [False] * (N_vis + 1)
+    cur = vals[-1]
     for t in range(N_vis - 1, -1, -1):
-        values[t], exercise[t] = [], []
+        vals[t], ex[t] = [], []
         for j in range(t + 1):
-            cont = disc * (p * current[j + 1] + (1 - p) * current[j])
-            ex   = max(K - stock[t][j], 0)
-            values[t].append(max(cont, ex))
-            exercise[t].append(ex > cont and ex > 0)
-        current = values[t]
-    return stock, values, exercise
+            cont = disc * (p * cur[j+1] + (1-p) * cur[j])
+            e    = max(K - stk[t][j], 0)
+            vals[t].append(max(cont, e))
+            ex[t].append(e > cont and e > 0)
+        cur = vals[t]
+    return stk, vals, ex
 
-# ── PLOTLY CHART BUILDERS ──────────────────────────────────────────────────────
-def chart_binom_convergence(S0, K, r, sigma, T):
-    steps  = [5, 10, 20, 50, 100, 200, 500]
-    prices = [binomial_price(S0, K, r, sigma, T, n, american=False) for n in steps]
-    bs     = black_scholes_put(S0, K, r, sigma, T)
+# ── CHARTS ─────────────────────────────────────────────────────────────────────
+def fig_tree(stk, vals, ex):
+    N = 4
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=steps, y=prices, mode="lines+markers",
-        line=dict(color=BLUE, width=2.5),
-        marker=dict(size=8, color=BLUE, line=dict(color=BG2, width=1.5)),
-        name="European binomial put",
-        hovertemplate="N=%{x}<br>Price=%{y:.4f} USD<extra></extra>",
-    ))
-    fig.add_hline(y=bs, line_color=RED, line_dash="dash", line_width=2,
-                  annotation_text=f"Black–Scholes: {bs:.4f} USD",
-                  annotation_font_color=RED, annotation_position="top left")
-    fig.update_layout(**lo(460,
-        title="Binomial European Put → Black–Scholes Convergence",
-        xlab="Number of steps N", ylab="Put price (USD)"))
-    return fig
-
-def chart_lsmc_convergence(S0, K, r, sigma, T, N_ref=200):
-    path_counts = [500, 1_000, 2_000, 5_000, 10_000, 20_000, 50_000]
-    lsmc_prices = [lsmc_put(S0, K, r, sigma, T, 50, n) for n in path_counts]
-    ref         = binomial_price(S0, K, r, sigma, T, N_ref, american=True)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=path_counts, y=lsmc_prices, mode="lines+markers",
-        line=dict(color=GRN, width=2.5),
-        marker=dict(size=8, color=GRN, line=dict(color=BG2, width=1.5)),
-        name="LSMC American put",
-        hovertemplate="Paths=%{x:,}<br>Price=%{y:.4f} USD<extra></extra>",
-    ))
-    fig.add_hline(y=ref, line_color=RED, line_dash="dash", line_width=2,
-                  annotation_text=f"Binomial reference (N=200): {ref:.4f} USD",
-                  annotation_font_color=RED, annotation_position="top left")
-    fig.update_layout(**lo(460,
-        title="LSMC American Put — Stability vs. Number of Paths",
-        xlab="Number of simulated paths", ylab="American put price (USD)"))
-    return fig
-
-def chart_tree(stock, values, exercise):
-    N_vis = 4
-    fig   = go.Figure()
-
-    # edges
-    edge_x, edge_y = [], []
-    for t in range(N_vis):
+    ex_x, ex_y, no_x, no_y = [], [], [], []
+    for t in range(N):
         for j in range(t + 1):
-            x0, y0 = t, j - t / 2
+            x0, y0 = t, j - t/2
             for dj in [0, 1]:
-                x1 = t + 1
-                y1 = (j + dj) - (t + 1) / 2
-                edge_x += [x0, x1, None]
-                edge_y += [y0, y1, None]
-    fig.add_trace(go.Scatter(
-        x=edge_x, y=edge_y, mode="lines",
-        line=dict(color=BD, width=2), showlegend=False, hoverinfo="skip"))
-
-    # node circles (two layers: normal and early-exercise)
-    for ex_flag, col_fill, col_border, leg_name in [
-        (False, "#1a2744", BLUE, "Normal node"),
-        (True,  "#2a0d0d", RED,  "Early exercise"),
-    ]:
-        xs, ys = [], []
-        for t in range(N_vis + 1):
-            for j in range(t + 1):
-                if exercise[t][j] == ex_flag:
-                    xs.append(t)
-                    ys.append(j - t / 2)
-        if xs:
-            fig.add_trace(go.Scatter(
-                x=xs, y=ys, mode="markers",
-                marker=dict(size=52, color=col_fill,
-                            line=dict(color=col_border, width=2.5)),
-                name=leg_name, hoverinfo="skip"))
-
-    # text annotations inside nodes
-    for t in range(N_vis + 1):
+                fig.add_trace(go.Scatter(
+                    x=[x0, t+1, None], y=[y0, (j+dj)-(t+1)/2, None],
+                    mode="lines", line=dict(color=BD, width=1.8),
+                    showlegend=False, hoverinfo="skip"))
+    for t in range(N + 1):
+        for j in range(t + 1):
+            (ex_x if ex[t][j] else no_x).append(t)
+            (ex_y if ex[t][j] else no_y).append(j - t/2)
+    if no_x:
+        fig.add_trace(go.Scatter(x=no_x, y=no_y, mode="markers",
+            marker=dict(size=58, color=BG2, line=dict(color=BLUE, width=2.5)),
+            name="Hold", hoverinfo="skip"))
+    if ex_x:
+        fig.add_trace(go.Scatter(x=ex_x, y=ex_y, mode="markers",
+            marker=dict(size=58, color="#7f1d1d", line=dict(color=RED, width=2.5)),
+            name="Exercise", hoverinfo="skip"))
+    for t in range(N + 1):
         for j in range(t + 1):
             fig.add_annotation(
-                x=t, y=j - t / 2,
-                text=f"<b>S={stock[t][j]:.0f}</b><br>V={values[t][j]:.2f}",
+                x=t, y=j - t/2,
+                text=f"<b>S={stk[t][j]:.0f}</b><br>V={vals[t][j]:.2f}",
                 showarrow=False, align="center",
-                font=dict(size=10.5,
-                          color="#ffa6a6" if exercise[t][j] else "#c9d1d9"),
-            )
-
+                font=dict(size=10.5, color=RED if ex[t][j] else TXT, family="Inter"))
     fig.update_layout(
         paper_bgcolor=BG, plot_bgcolor=BG,
-        font=dict(color=TXT, size=13),
-        xaxis=dict(showgrid=False, zeroline=False, tickvals=list(range(5)),
-                   ticktext=["t = 0", "t = 1", "t = 2", "t = 3", "t = 4"],
-                   linecolor="#484f58"),
+        font=dict(color=TXT, family="Inter"),
+        xaxis=dict(showgrid=False, zeroline=False,
+                   tickvals=list(range(5)),
+                   ticktext=["t = 0","t = 1","t = 2","t = 3","t = 4"],
+                   linecolor=BD, color=MUT),
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        legend=dict(bgcolor="rgba(22,27,34,0.9)", bordercolor=BD,
-                    borderwidth=1, font=dict(size=12, color=TXT),
-                    orientation="h", x=0, y=-0.08),
-        margin=dict(l=20, r=20, t=55, b=60),
-        height=520,
-        title=dict(text="SpaceX/SPCX American Put — Binomial Tree "
-                        "(4-step visual, N = 200 for pricing)",
-                   font=dict(size=15, color=LBLU)),
+        legend=dict(bgcolor=BG2, bordercolor=BD, borderwidth=1, x=0, y=-0.1,
+                    orientation="h", font=dict(size=12)),
+        margin=dict(l=20, r=20, t=50, b=60), height=500,
+        title=dict(text="Binomial Tree — 4 steps shown, 200 steps used for pricing",
+                   font=dict(size=13, color=GLD2)),
     )
     return fig
 
-def chart_mc(paths, strike, S0):
-    time_grid        = np.linspace(0, 93 / 365, paths.shape[1])
-    terminal_prices  = paths[:, -1]
-    terminal_payoffs = np.maximum(strike - terminal_prices, 0)
-
+def fig_mc(paths, K, S0, T):
+    tg  = np.linspace(0, T, paths.shape[1])
     fig = go.Figure()
-    for i in range(100):
+    for i in range(120):
         fig.add_trace(go.Scatter(
-            x=time_grid, y=paths[i],
-            mode="lines", line=dict(color=f"rgba(88,166,255,0.12)", width=0.9),
-            showlegend=False, hoverinfo="skip",
-        ))
-    fig.add_hline(y=strike, line_color=RED, line_dash="dash", line_width=2,
-                  annotation_text=f"Strike: {strike} USD",
-                  annotation_font_color=RED)
-    fig.update_layout(**lo(480,
-        title="Simulated SpaceX/SPCX Stock Paths (100 of 50,000)",
-        xlab="Time to maturity (years)", ylab="Stock price (USD)"))
-    return fig, terminal_prices, terminal_payoffs
-
-def chart_terminal_dist(terminal_prices, strike, S0):
-    fig = go.Figure()
-    fig.add_trace(go.Histogram(
-        x=terminal_prices, nbinsx=60,
-        marker=dict(color=ORG, opacity=0.8, line=dict(color=BG2, width=0.4)),
-        name="Terminal price",
-        hovertemplate="Price bin=%{x:.0f} USD<br>Count=%{y}<extra></extra>",
-    ))
-    fig.add_vline(x=strike, line_color=RED, line_dash="dash", line_width=2,
-                  annotation_text=f"Strike: {strike} USD",
-                  annotation_font_color=RED)
-    fig.add_vline(x=S0, line_color=GRN, line_dash="dot", line_width=2,
-                  annotation_text=f"S₀: {S0} USD",
-                  annotation_font_color=GRN)
-    fig.update_layout(**lo(480,
-        title="Terminal Stock Price Distribution",
-        xlab="Terminal price (USD)", ylab="Number of paths"))
+            x=tg, y=paths[i], mode="lines",
+            line=dict(color=f"rgba(96,165,250,0.10)", width=0.8),
+            showlegend=False, hoverinfo="skip"))
+    fig.add_hline(y=K, line_color=RED, line_dash="dash", line_width=2,
+                  annotation_text="Strike: $135", annotation_font_color=RED,
+                  annotation_position="top left")
+    fig.update_layout(**lo(430, "50,000 Simulated SpaceX/SPCX Stock Paths",
+                           "Time to maturity (years)", "Stock price (USD)"))
     return fig
 
+def fig_dist(terminal, K, S0):
+    payoffs = np.maximum(K - terminal, 0)
+    itm_pct = (terminal < K).mean() * 100
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=terminal, nbinsx=60,
+        marker=dict(color=GOLD, opacity=0.75, line=dict(color=BG, width=0.3)),
+        name="Terminal price", hovertemplate="$%{x:.0f}<br>Count: %{y}<extra></extra>"))
+    fig.add_vline(x=K,  line_color=RED,  line_dash="dash", line_width=2,
+                  annotation_text="Strike $135", annotation_font_color=RED)
+    fig.add_vline(x=S0, line_color=GRN, line_dash="dot",  line_width=2,
+                  annotation_text="S₀ $201.80", annotation_font_color=GRN)
+    fig.update_layout(**lo(430, f"Terminal Price Distribution  ·  {itm_pct:.1f}% of paths end ITM",
+                           "Terminal price (USD)", "Number of paths"))
+    return fig, itm_pct, payoffs
+
+# ── NAVIGATION ─────────────────────────────────────────────────────────────────
+SLIDES = ["Title", "The Challenge", "Binomial Tree", "Monte Carlo", "SpaceX / SPCX", "Takeaways"]
+
+if "slide" not in st.session_state:
+    st.session_state.slide = 0
+
+cols = st.columns(len(SLIDES))
+for i, (col, label) in enumerate(zip(cols, SLIDES)):
+    with col:
+        active = st.session_state.slide == i
+        if st.button(label, use_container_width=True, key=f"n{i}",
+                     type="primary" if active else "secondary"):
+            st.session_state.slide = i
+            st.rerun()
+
+st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+slide = st.session_state.slide
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SLIDE 0 — INTRODUCTION
+#  0 · TITLE
 # ══════════════════════════════════════════════════════════════════════════════
 if slide == 0:
-    st.markdown("# Pricing of American Options")
-    st.markdown(
-        "#### Binomial Tree & Least-Squares Monte Carlo with a SpaceX/SPCX Case Study")
-    st.markdown(
-        "*Computer Based Investment Analysis · Frankfurt UAS · Summer 2026*  \n"
-        "**Authors:** Ilyos Umurzakov · Leon Ye &nbsp;|&nbsp; "
-        "**Lecturers:** Ferdinand Wöhrle · Lukas Müller")
+    st.markdown(f"""
+    <div style="text-align:center; padding:40px 0 20px 0;">
+      {logo_tag(height=100)}
+      <div style="margin-top:28px; font-size:0.72rem; font-weight:700;
+                  letter-spacing:0.16em; text-transform:uppercase; color:{MUT};">
+        Frankfurt University of Applied Sciences &nbsp;·&nbsp; Faculty 3 – Business and Law
+      </div>
+      <div style="margin-top:6px; font-size:0.85rem; color:{MUT};">
+        Computer Based Investment Analysis &nbsp;|&nbsp; Summer Semester 2026
+      </div>
+      <div style="margin-top:48px; font-size:2.8rem; font-weight:800;
+                  color:{TXT}; line-height:1.2; letter-spacing:-0.01em;">
+        Pricing of American Options
+      </div>
+      <div style="margin-top:12px; font-size:1.25rem; color:{MUT}; font-weight:400;">
+        Binomial Tree &nbsp;&amp;&nbsp; Least-Squares Monte Carlo
+      </div>
+      <div style="margin-top:8px; font-size:1.05rem; font-weight:600; color:{GOLD};">
+        SpaceX / SPCX Case Study
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("<hr class='sec-rule' style='border-top:2px solid #1f6feb;margin:1.5rem 0;'>",
-                unsafe_allow_html=True)
+    st.markdown("<hr class='divider' style='margin:36px 0;'>", unsafe_allow_html=True)
 
     c1, c2, c3 = st.columns(3)
-    c1.markdown("""<div class='kpi'>
-        <div class='kpi-val'>2</div>
-        <div class='kpi-lbl'>Numerical methods compared</div></div>""",
-        unsafe_allow_html=True)
-    c2.markdown("""<div class='kpi'>
-        <div class='kpi-val'>107.4%</div>
-        <div class='kpi-lbl'>Implied volatility — SpaceX/SPCX</div></div>""",
-        unsafe_allow_html=True)
-    c3.markdown("""<div class='kpi'>
-        <div class='kpi-val'>$1,130</div>
-        <div class='kpi-lbl'>Market premium per contract</div></div>""",
-        unsafe_allow_html=True)
+    for col, name, matno in [
+        (c1, "", ""),
+        (c2, "Ilyos Umurzakov · Leon Ye", "Matriculation No. 1615067 · 1616910"),
+        (c3, "", ""),
+    ]:
+        with col:
+            if name:
+                st.markdown(f"""
+                <div style="text-align:center;">
+                  <div style="font-size:1.1rem; font-weight:700; color:{TXT};">{name}</div>
+                  <div style="font-size:0.82rem; color:{MUT}; margin-top:6px;">{matno}</div>
+                  <div style="font-size:0.82rem; color:{MUT}; margin-top:4px;">
+                    Lecturers: Ferdinand Wöhrle &nbsp;·&nbsp; Lukas Müller
+                  </div>
+                </div>""", unsafe_allow_html=True)
 
-    st.markdown("## What is an American Option?")
-    col_l, col_r = st.columns(2)
-    with col_l:
-        st.markdown("""<div class='card'>
-        <div class='card-h'>European vs. American</div>
-        <div class='card-b'>
-        A <b>European option</b> can only be exercised at expiry.<br><br>
-        An <b>American option</b> can be exercised at <em>any point</em> before expiry.
-        This flexibility makes it at least as valuable — and much harder to price.
-        </div></div>""", unsafe_allow_html=True)
-
-        st.markdown("""<div class='card'>
-        <div class='card-h'>Early Exercise Premium</div>
-        <div class='card-b'>
-        The extra value of the American right is the <em>early exercise premium</em>:<br><br>
-        <b>V<sub>American</sub> ≥ V<sub>European</sub></b><br><br>
-        For a <b>put</b> on a non-dividend stock, early exercise can be optimal when
-        the stock price is very low — the holder may prefer to receive the strike price
-        immediately rather than waiting.
-        </div></div>""", unsafe_allow_html=True)
-
-    with col_r:
-        st.markdown("""<div class='card'>
-        <div class='card-h'>Why No Closed Form?</div>
-        <div class='card-b'>
-        Black–Scholes gives a closed-form price for <em>European</em> options.
-        For American options, early exercise creates a free-boundary problem:
-        the holder must decide at <em>every moment</em> whether to exercise.
-        This makes a simple formula impossible. We need numerical methods.
-        </div></div>""", unsafe_allow_html=True)
-
-        st.markdown("""<div class='card'>
-        <div class='card-h'>This Paper</div>
-        <div class='card-b'>
-        <b>Method 1 — CRR Binomial Tree:</b> builds a discrete price lattice and prices
-        the option by backward induction. Transparent and explainable.<br><br>
-        <b>Method 2 — LSMC:</b> simulates thousands of stock paths and estimates the
-        continuation value at each step with regression. Flexible and scalable.<br><br>
-        <b>Case study:</b> September 2026 SpaceX/SPCX put, strike 135 USD.
-        </div></div>""", unsafe_allow_html=True)
-
-    st.markdown("""<div class='info'>
-    <b>Key question:</b> How large is the early exercise premium for the SpaceX put?
-    And what does the market's 107% implied volatility tell us about future expectations?
-    </div>""", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    for col, val, lbl in [
+        (c1, "2 Methods", "Binomial Tree + LSMC"),
+        (c2, "$1,130", "SpaceX put contract price"),
+        (c3, "107%", "Implied volatility"),
+    ]:
+        with col:
+            st.markdown(f"""<div class="metric">
+              <div class="metric-val">{val}</div>
+              <div class="metric-lbl">{lbl}</div>
+            </div>""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SLIDE 1 — BINOMIAL TREE
+#  1 · THE CHALLENGE
 # ══════════════════════════════════════════════════════════════════════════════
 elif slide == 1:
-    st.markdown("## 🌳 Method 1: CRR Binomial Tree")
-    st.markdown("*Cox, Ross & Rubinstein (1979)*")
+    st.markdown(f'<div class="section-label">The Problem</div>', unsafe_allow_html=True)
+    st.markdown("## Why Are American Options Hard to Price?")
 
-    col_l, col_r = st.columns([1, 1])
+    col_l, col_r = st.columns(2, gap="large")
     with col_l:
-        st.markdown("### Model Setup")
-        st.markdown("The stock price moves **up** or **down** at each discrete time step:")
-        st.latex(r"\Delta t = \frac{T}{N}")
-        st.latex(r"u = e^{\sigma\sqrt{\Delta t}}, \quad d = \frac{1}{u}")
-        st.markdown("The **risk-neutral probability** of an up move:")
-        st.latex(r"p = \frac{e^{r\,\Delta t} - d}{u - d}")
-        st.markdown(
-            "This is not a real-world forecast — it is a pricing tool that lets us "
-            "discount expected payoffs at the risk-free rate.")
-
-        st.markdown("### Backward Induction")
-        st.markdown("At maturity, the put payoff at each node is max(K − S, 0).  \n"
-                    "Working backwards, the **continuation value** at each node is:")
-        st.latex(r"C = e^{-r\,\Delta t}\,(p\,V_{\text{up}} + (1-p)\,V_{\text{down}})")
-        st.markdown("For an American option:")
-        st.latex(r"V = \max\!\bigl(C,\; K - S\bigr)")
-        st.markdown(
-            "The **max** is the core of American option pricing. "
-            "It compares waiting (C) with exercising immediately (K − S).")
+        for num, head, body in [
+            ("01", "A put option gives you the right to sell",
+             "You can sell the underlying stock at the fixed strike price K — even if the market price has dropped far below it."),
+            ("02", "European: exercise only at expiry",
+             "The Black–Scholes formula handles this perfectly. One date, one decision."),
+            ("03", "American: exercise any time before expiry",
+             "At every moment the holder asks: <i>is it better to exercise now or wait?</i> This creates thousands of decision points."),
+            ("04", "No closed-form solution",
+             "Because of the early exercise choice, there is no simple formula. We need numerical methods."),
+        ]:
+            st.markdown(f"""<div class="step-row">
+              <div class="step-num">{num}</div>
+              <div>
+                <div class="step-head">{head}</div>
+                <div class="step-body">{body}</div>
+              </div>
+            </div>""", unsafe_allow_html=True)
 
     with col_r:
-        st.markdown("### Strengths & Limitations")
-        for num, head, body in [
-            ("01", "Transparency",
-             "Every single node is interpretable. You can trace exactly why the "
-             "option is exercised at a specific stock price and time step."),
-            ("02", "Accuracy with N",
-             "More steps → finer tree → European price converges to Black–Scholes. "
-             "N = 200 is more than sufficient for 4-decimal accuracy."),
-            ("03", "Limitation: Computation",
-             "The tree has (N+1)(N+2)/2 nodes. At N = 200 that is ~20,000 nodes, "
-             "but it remains fast for a single underlying asset."),
-            ("04", "Limitation: Simplicity",
-             "Constant volatility and interest rate. No dividends in our case study. "
-             "Extensions exist but complicate the model."),
-        ]:
-            st.markdown(f"""<div class='step'>
-            <div class='step-num'>Point {num}</div>
-            <div class='step-head'>{head}</div>
-            <div class='step-body'>{body}</div></div>""", unsafe_allow_html=True)
+        st.markdown(f'<div class="section-label">The Early Exercise Premium</div>',
+                    unsafe_allow_html=True)
+        st.markdown(f"""<div class="highlight" style="margin-bottom:20px;">
+          The American option is always worth <b>at least as much</b> as the European option.<br><br>
+          The extra value — called the <b style="color:{GOLD};">early exercise premium</b> —
+          comes from the right to act before expiry.<br><br>
+          For a put on a stock that has fallen sharply, it may be better to
+          take the cash <i>today</i> rather than wait until maturity.
+        </div>""", unsafe_allow_html=True)
 
-    st.markdown("""<div class='find'>
-    <b>Key insight:</b> The binomial tree turns a continuous-time decision problem
-    into a finite sequence of binary choices. The American put price is the value
-    at the root node (t = 0) after backward induction.
-    </div>""", unsafe_allow_html=True)
+        # Simple visual: timeline
+        fig = go.Figure()
+        # European
+        fig.add_shape(type="line", x0=0, x1=1, y0=0.7, y1=0.7,
+                      line=dict(color=MUT, width=3))
+        fig.add_trace(go.Scatter(x=[0, 1], y=[0.7, 0.7], mode="markers+text",
+            marker=dict(size=[10, 16], color=[BLUE, BLUE]),
+            text=["Start", "Expiry only"], textposition=["top center", "top center"],
+            textfont=dict(color=BLUE, size=11), showlegend=False, hoverinfo="skip"))
+        # American
+        fig.add_shape(type="line", x0=0, x1=1, y0=0.3, y1=0.3,
+                      line=dict(color=GOLD, width=3))
+        for xi in [0.2, 0.4, 0.6, 0.8, 1.0]:
+            fig.add_trace(go.Scatter(x=[xi], y=[0.3], mode="markers",
+                marker=dict(size=12, color=GOLD), showlegend=False, hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=[0.5], y=[0.3], mode="text",
+            text=["Exercise any time"], textposition="bottom center",
+            textfont=dict(color=GOLD, size=11), showlegend=False, hoverinfo="skip"))
+
+        fig.add_annotation(x=-0.06, y=0.7, text="European", showarrow=False,
+                           font=dict(color=BLUE, size=12, family="Inter"), xanchor="right")
+        fig.add_annotation(x=-0.06, y=0.3, text="American", showarrow=False,
+                           font=dict(color=GOLD, size=12, family="Inter"), xanchor="right")
+
+        fig.update_layout(
+            paper_bgcolor=BG, plot_bgcolor=BG2,
+            xaxis=dict(showgrid=False, showticklabels=False, zeroline=False,
+                       range=[-0.08, 1.1]),
+            yaxis=dict(showgrid=False, showticklabels=False, zeroline=False,
+                       range=[0, 1]),
+            height=240, margin=dict(l=80, r=20, t=30, b=20),
+            title=dict(text="Exercise Window", font=dict(size=12, color=GLD2)),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        c1, c2 = st.columns(2)
+        c1.markdown(f"""<div class="metric">
+          <div class="metric-val" style="font-size:1.5rem;">V<sub style="font-size:1rem">Am</sub> ≥ V<sub style="font-size:1rem">Eu</sub></div>
+          <div class="metric-lbl">Always true</div>
+        </div>""", unsafe_allow_html=True)
+        c2.markdown(f"""<div class="metric">
+          <div class="metric-val" style="font-size:1.5rem; color:{GRN};">Puts</div>
+          <div class="metric-lbl">Early exercise most relevant for puts</div>
+        </div>""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SLIDE 2 — LSMC
+#  2 · BINOMIAL TREE
 # ══════════════════════════════════════════════════════════════════════════════
 elif slide == 2:
-    st.markdown("## 🎲 Method 2: Least-Squares Monte Carlo")
-    st.markdown("*Longstaff & Schwartz (2001)*")
+    st.markdown(f'<div class="section-label">Method 1</div>', unsafe_allow_html=True)
+    st.markdown("## Cox–Ross–Rubinstein Binomial Tree")
 
-    col_l, col_r = st.columns([1, 1])
+    col_l, col_r = st.columns([1, 1.6], gap="large")
     with col_l:
-        st.markdown("### Why Plain Monte Carlo Fails")
-        st.markdown("""<div class='warn'>
-        Standard Monte Carlo only uses the <b>terminal payoff</b>. This works for
-        European options, but American holders can exercise <em>before</em> maturity.
-        At each step, the holder must compare:<br><br>
-        <b>Immediate exercise value</b> vs. <b>Expected value of waiting</b><br><br>
-        The future value depends on unknown future paths — we cannot calculate it directly.
+        st.markdown("### How it works")
+        for num, head, body in [
+            ("01", "Build a price tree",
+             "The stock can move UP or DOWN each time step. After N steps you have a full lattice of possible prices."),
+            ("02", "Value at maturity",
+             "At the final nodes, the put payoff is simply max(K − S, 0)."),
+            ("03", "Work backwards",
+             "At each node, compare: keep holding (continuation value) vs. exercise now (K − S). Take the maximum."),
+            ("04", "Price = root node",
+             "The option value at t = 0 is the answer. N = 200 steps gives 4-decimal accuracy."),
+        ]:
+            st.markdown(f"""<div class="step-row">
+              <div class="step-num">{num}</div>
+              <div>
+                <div class="step-head">{head}</div>
+                <div class="step-body">{body}</div>
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""<div class="highlight" style="margin-top:16px;">
+          <b style="color:{GOLD};">Key strength:</b> every single node is readable.
+          You can trace exactly <i>why</i> the option is exercised at a specific price and time.
         </div>""", unsafe_allow_html=True)
 
-        st.markdown("### The LSMC Solution")
-        st.markdown("Simulate many paths with **risk-neutral GBM**:")
-        st.latex(
-            r"S_{t+\Delta t} = S_t \cdot \exp\!\left[\left(r - \tfrac12\sigma^2\right)"
-            r"\Delta t + \sigma\sqrt{\Delta t}\,Z\right]")
-        st.markdown(
-            "Then **work backward** from maturity. At each step, estimate the "
-            "continuation value by regressing discounted future cashflows on:")
-        st.latex(r"\text{Basis functions: } 1,\; S,\; S^2")
-        st.markdown(
-            "Only **in-the-money** paths are included in the regression — "
-            "out-of-the-money options would never be exercised, so they are irrelevant.")
-
     with col_r:
-        st.markdown("### Algorithm Step by Step")
-        for num, head, body in [
-            ("01", "Simulate paths",
-             "Generate num_paths stock price trajectories using GBM under the "
-             "risk-neutral measure, from t = 0 to t = T."),
-            ("02", "Terminal payoffs",
-             "At maturity T, calculate max(K − S_T, 0) for each path. "
-             "These are the starting cashflows for the backward pass."),
-            ("03", "Backward regression",
-             "At each time step t (moving backward), discount cashflows one step. "
-             "For ITM paths, regress cashflows on [1, S_t, S_t²] to estimate "
-             "the continuation value."),
-            ("04", "Exercise decision",
-             "If exercise value > fitted continuation value, update cashflow "
-             "to the exercise value for that path."),
-            ("05", "Final price",
-             "Average all cashflows and apply one final discounting step "
-             "to get the American put price at t = 0."),
-        ]:
-            st.markdown(f"""<div class='step'>
-            <div class='step-num'>Step {num}</div>
-            <div class='step-head'>{head}</div>
-            <div class='step-body'>{body}</div></div>""", unsafe_allow_html=True)
-
-    st.markdown("""<div class='info'>
-    <b>Key difference vs. binomial tree:</b> The binomial tree calculates the
-    continuation value exactly from two branches. LSMC <em>estimates</em> it
-    statistically from many paths. Both should give similar answers — differences
-    are expected simulation noise, not errors.
-    </div>""", unsafe_allow_html=True)
+        # SpaceX tree
+        S0, K, r, T = 201.80, 135, 0.037, 93/365
+        with st.spinner("Computing…"):
+            sigma_iv = implied_vol(11.30, S0, K, r, T, 200)
+            stk, vals, ex = small_tree(S0, K, r, sigma_iv, T, N_vis=4)
+        st.plotly_chart(fig_tree(stk, vals, ex), use_container_width=True)
+        st.markdown(f"""<div style="font-size:0.85rem; color:{MUT}; text-align:center;">
+          <span style="color:{RED}; font-weight:700;">Red nodes</span> = early exercise optimal &nbsp;|&nbsp;
+          S = stock price &nbsp;|&nbsp; V = put value (USD)
+        </div>""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SLIDE 3 — BASE CASE
+#  3 · MONTE CARLO / LSMC
 # ══════════════════════════════════════════════════════════════════════════════
 elif slide == 3:
-    st.markdown("## ✅ Base Case Validation")
-    st.markdown(
-        "Standard at-the-money inputs from the options pricing literature.  \n"
-        "Goal: confirm that both methods agree and that the binomial tree "
-        "converges to Black–Scholes for European options.")
+    st.markdown(f'<div class="section-label">Method 2</div>', unsafe_allow_html=True)
+    st.markdown("## Least-Squares Monte Carlo (LSMC)")
 
-    # ── inputs
-    col_in, col_res = st.columns([1, 1.4])
-    with col_in:
-        st.markdown("### Inputs")
-        inp = pd.DataFrame({
-            "Parameter": ["Stock price S₀", "Strike K", "Risk-free rate r",
-                          "Volatility σ", "Maturity T"],
-            "Value":     ["100 USD", "100 USD (ATM)", "5% p.a.", "20% p.a.", "1 year"],
-        })
-        st.dataframe(inp, hide_index=True, use_container_width=True)
-
-    # ── compute
-    S0_bc, K_bc, r_bc, sig_bc, T_bc = 100, 100, 0.05, 0.20, 1.0
-    bs    = black_scholes_put(S0_bc, K_bc, r_bc, sig_bc, T_bc)
-    b_eur = binomial_price(S0_bc, K_bc, r_bc, sig_bc, T_bc, 200, american=False)
-    b_am  = binomial_price(S0_bc, K_bc, r_bc, sig_bc, T_bc, 200, american=True)
-    l_am  = lsmc_put(S0_bc, K_bc, r_bc, sig_bc, T_bc, 200, 50_000)
-    ee    = b_am - b_eur
-
-    with col_res:
-        st.markdown("### Results")
-        res = pd.DataFrame({
-            "Measure": [
-                "Black–Scholes European put",
-                "Binomial European put (N=200)",
-                "Binomial American put (N=200)",
-                "LSMC American put (50,000 paths)",
-                "Early exercise premium",
-            ],
-            "Value (USD)": [f"{bs:.4f}", f"{b_eur:.4f}", f"{b_am:.4f}",
-                            f"{l_am:.4f}", f"{ee:.4f}"],
-        })
-        st.dataframe(res, hide_index=True, use_container_width=True)
-
-    st.markdown("---")
-
-    # ── highlight boxes
-    c1, c2, c3 = st.columns(3)
-    c1.markdown(f"""<div class='kpi'>
-        <div class='kpi-val'>{bs:.2f} USD</div>
-        <div class='kpi-lbl'>Black–Scholes European put</div></div>""",
-        unsafe_allow_html=True)
-    c2.markdown(f"""<div class='kpi'>
-        <div class='kpi-val'>{b_am:.2f} USD</div>
-        <div class='kpi-lbl'>Binomial American put</div></div>""",
-        unsafe_allow_html=True)
-    c3.markdown(f"""<div class='kpi'>
-        <div class='kpi-val'>{ee:.4f} USD</div>
-        <div class='kpi-lbl'>Early exercise premium</div></div>""",
-        unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("### Convergence Plots")
-
-    tab1, tab2 = st.tabs(["📉 Binomial → Black–Scholes", "🎲 LSMC stability"])
-    with tab1:
-        st.plotly_chart(chart_binom_convergence(S0_bc, K_bc, r_bc, sig_bc, T_bc),
-                        use_container_width=True)
-        st.markdown("""<div class='find'>
-        The European binomial put converges rapidly to the Black–Scholes benchmark.
-        Already at N = 50 the difference is less than 1 cent. At N = 200 it is
-        virtually indistinguishable — confirming the implementation is correct.
-        </div>""", unsafe_allow_html=True)
-
-    with tab2:
-        st.plotly_chart(chart_lsmc_convergence(S0_bc, K_bc, r_bc, sig_bc, T_bc),
-                        use_container_width=True)
-        st.markdown("""<div class='find'>
-        With only 500 paths, LSMC is noisy. By 10,000 paths it stabilises near the
-        binomial reference. At 50,000 paths the estimate is reliable. Remaining
-        differences from the binomial are normal simulation and regression error.
-        </div>""", unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  SLIDE 4 — SPACEX / SPCX CASE STUDY
-# ══════════════════════════════════════════════════════════════════════════════
-elif slide == 4:
-    st.markdown("## 🚀 SpaceX/SPCX Case Study")
-
-    # ── context KPIs
-    c1, c2, c3, c4 = st.columns(4)
-    c1.markdown("""<div class='kpi'>
-        <div class='kpi-val'>$135</div>
-        <div class='kpi-lbl'>IPO price · 12 Jun 2026</div></div>""",
-        unsafe_allow_html=True)
-    c2.markdown("""<div class='kpi'>
-        <div class='kpi-val'>$201.80</div>
-        <div class='kpi-lbl'>Stock price · 16 Jun 2026</div></div>""",
-        unsafe_allow_html=True)
-    c3.markdown("""<div class='kpi'>
-        <div class='kpi-val'>$1,130</div>
-        <div class='kpi-lbl'>Market premium per contract</div></div>""",
-        unsafe_allow_html=True)
-    c4.markdown("""<div class='kpi'>
-        <div class='kpi-val'>93 days</div>
-        <div class='kpi-lbl'>Time to Sep 18, 2026 expiry</div></div>""",
-        unsafe_allow_html=True)
-
-    st.markdown("""<div class='info'>
-    SpaceX (ticker: SPCX) listed at 135 USD on 12 June 2026 and rose sharply to
-    201.80 USD by 16 June. On that day, exchange options were launched. A September
-    2026 put at the IPO strike of 135 USD traded at <b>11.30 USD per share
-    (1,130 USD per contract)</b>. This is our case study.
-    </div>""", unsafe_allow_html=True)
-
-    # ── compute
-    S0, K, r, T = 201.80, 135, 0.037, 93 / 365
-    mkt = 11.30
-    N   = 200
-
-    with st.spinner("Computing implied volatility and model prices…"):
-        sigma_iv  = implied_vol(mkt, S0, K, r, T, N)
-        b_am_sx   = binomial_price(S0, K, r, sigma_iv, T, N, american=True)
-        b_eu_sx   = binomial_price(S0, K, r, sigma_iv, T, N, american=False)
-        l_am_sx   = lsmc_put(S0, K, r, sigma_iv, T, N, 50_000)
-        ee_sx     = b_am_sx - b_eu_sx
-
-    st.markdown("---")
-
-    col_l, col_r = st.columns([1, 1])
-
+    col_l, col_r = st.columns([1, 1.6], gap="large")
     with col_l:
-        st.markdown("### Implied Volatility")
-        st.markdown("""<div class='ans'>
-        We <em>reverse</em> the pricing model: instead of asking "what price does a
-        given volatility produce?", we ask<br><br>
-        <b>"Which volatility makes the model match the 11.30 USD market price?"</b><br><br>
-        The answer is found by bisection search over σ.
-        </div>""", unsafe_allow_html=True)
+        st.markdown("### How it works")
+        for num, head, body in [
+            ("01", "Simulate 50,000 paths",
+             "Each path is one possible future for the stock price, generated with random normal shocks."),
+            ("02", "Start at maturity",
+             "At expiry, each path either pays off (stock below strike) or expires worthless."),
+            ("03", "Regression step",
+             "Moving backwards: for each time step, use regression to estimate whether waiting is worth more than exercising now."),
+            ("04", "Average the result",
+             "The option price is the average discounted cashflow across all 50,000 paths."),
+        ]:
+            st.markdown(f"""<div class="step-row">
+              <div class="step-num">{num}</div>
+              <div>
+                <div class="step-head">{head}</div>
+                <div class="step-body">{body}</div>
+              </div>
+            </div>""", unsafe_allow_html=True)
 
-        st.markdown(f"""<div class='kpi' style='margin-top:16px;'>
-            <div class='kpi-val'>{sigma_iv*100:.1f}%</div>
-            <div class='kpi-lbl'>Implied volatility σ<sub>IV</sub></div></div>""",
-            unsafe_allow_html=True)
-
-        st.markdown("""<div class='warn' style='margin-top:12px;'>
-        A typical stock has σ ≈ 20–30%. SpaceX/SPCX shows ~107% because the option
-        is <b>deeply out of the money</b> (stock at 201.80 vs. strike at 135) and
-        the market expects <b>extreme price swings</b> from a newly-listed stock.
+        st.markdown(f"""<div class="highlight" style="margin-top:16px;">
+          <b style="color:{GOLD};">vs. Binomial Tree:</b> less transparent but more flexible —
+          the same method scales to options with multiple risk factors or complex payoffs.
         </div>""", unsafe_allow_html=True)
 
     with col_r:
-        st.markdown("### Model Results")
-        res_sx = pd.DataFrame({
-            "Measure": [
-                "Market price per share",
-                "Market price per contract (×100)",
-                "Implied volatility σ_IV",
-                "Binomial American put",
-                "Binomial European put",
-                "LSMC American put",
-                "Early exercise premium",
-            ],
-            "Value": [
-                f"{mkt:.2f} USD",
-                f"{mkt*100:.2f} USD",
-                f"{sigma_iv*100:.2f}%",
-                f"{b_am_sx:.4f} USD",
-                f"{b_eu_sx:.4f} USD",
-                f"{l_am_sx:.4f} USD",
-                f"{ee_sx:.4f} USD",
-            ],
-        })
-        st.dataframe(res_sx, hide_index=True, use_container_width=True)
-
-        st.markdown(f"""<div class='find' style='margin-top:12px;'>
-        <b>Key finding:</b> The early exercise premium is only
-        <b>{ee_sx:.4f} USD</b> out of a total price of {mkt:.2f} USD.
-        That is less than 0.3% of the contract value. The price is almost
-        entirely driven by <em>high implied volatility</em>, not early exercise.
-        </div>""", unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("### Visualisations")
-    tab_tree, tab_mc = st.tabs(["🌳 Binomial Tree", "🎲 Monte Carlo Simulation"])
-
-    with tab_tree:
-        stk, vals, ex = small_tree(S0, K, r, sigma_iv, T, N_vis=4)
-        st.plotly_chart(chart_tree(stk, vals, ex), use_container_width=True)
-        st.markdown("""<div class='info'>
-        Each node shows the stock price S and the American put value V.
-        <span style='color:#f85149;'><b>Red nodes</b></span> indicate where immediate
-        exercise is optimal in this 4-step visual tree. The actual pricing uses 200 steps.
-        Because the stock starts far above the strike, most upper nodes have zero put value
-        and exercise only appears in the lower-left region of the tree.
-        </div>""", unsafe_allow_html=True)
-
-    with tab_mc:
-        with st.spinner("Simulating 50,000 paths…"):
-            paths = simulate_paths(S0, r, sigma_iv, T, N, 50_000, seed=42)
-        fig_mc, term_prices, term_payoffs = chart_mc(paths, K, S0)
-        fig_dist = chart_terminal_dist(term_prices, K, S0)
-
-        col_mc1, col_mc2 = st.columns(2)
-        with col_mc1:
-            st.plotly_chart(fig_mc, use_container_width=True)
-        with col_mc2:
-            st.plotly_chart(fig_dist, use_container_width=True)
-
-        st.markdown(f"""<div class='find'>
-        Average undiscounted terminal put payoff across all 50,000 paths:
-        <b>{np.mean(term_payoffs):.2f} USD</b>.
-        Only paths ending below 135 USD generate a payoff. The LSMC method
-        applies regression backward through time to decide whether early exercise
-        on any individual path is preferable to waiting until expiry.
-        </div>""", unsafe_allow_html=True)
+        S0, K, r, T = 201.80, 135, 0.037, 93/365
+        with st.spinner("Simulating…"):
+            sigma_iv = implied_vol(11.30, S0, K, r, T, 200)
+            paths    = simulate_paths(S0, r, sigma_iv, T, 200, 50_000)
+        tab1, tab2 = st.tabs(["Stock Paths", "Terminal Distribution"])
+        with tab1:
+            st.plotly_chart(fig_mc(paths, K, S0, T), use_container_width=True)
+        with tab2:
+            fd, itm_pct, payoffs = fig_dist(paths[:, -1], K, S0)
+            st.plotly_chart(fd, use_container_width=True)
+            st.markdown(f"""<div style="text-align:center; font-size:0.88rem; color:{MUT};">
+              Average terminal payoff (ITM paths only):
+              <b style="color:{GOLD};">${np.mean(payoffs[payoffs>0]):.2f}</b> &nbsp;|&nbsp;
+              Paths ending in-the-money: <b style="color:{GOLD};">{itm_pct:.1f}%</b>
+            </div>""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SLIDE 5 — CONCLUSION
+#  4 · SPACEX / SPCX
+# ══════════════════════════════════════════════════════════════════════════════
+elif slide == 4:
+    st.markdown(f'<div class="section-label">Case Study</div>', unsafe_allow_html=True)
+    st.markdown("## SpaceX / SPCX — September 2026 Put")
+
+    # Context bar
+    c1, c2, c3, c4 = st.columns(4)
+    for col, val, lbl in [
+        (c1, "$135",    "IPO price · 12 Jun 2026"),
+        (c2, "$201.80", "Stock price · 16 Jun 2026"),
+        (c3, "$1,130",  "Market premium per contract"),
+        (c4, "93 days", "Time to Sep 18 expiry"),
+    ]:
+        with col:
+            st.markdown(f"""<div class="metric">
+              <div class="metric-val" style="font-size:1.8rem;">{val}</div>
+              <div class="metric-lbl">{lbl}</div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+    col_l, col_r = st.columns(2, gap="large")
+
+    S0, K, r, T, mkt = 201.80, 135, 0.037, 93/365, 11.30
+    with st.spinner("Computing model prices…"):
+        sigma_iv = implied_vol(mkt, S0, K, r, T, 200)
+        b_am  = binomial_price(S0, K, r, sigma_iv, T, 200, american=True)
+        b_eu  = binomial_price(S0, K, r, sigma_iv, T, 200, american=False)
+        l_am  = lsmc_put(S0, K, r, sigma_iv, T, 200, 50_000)
+        ee    = b_am - b_eu
+
+    with col_l:
+        st.markdown("### What drives the price?")
+        st.markdown(f"""<div class="highlight">
+          The put strike is <b>$135</b> but the stock trades at <b>$201.80</b> —
+          the option is deeply <b>out of the money</b>.<br><br>
+          A premium of $11.30/share can only exist if the market expects
+          <b style="color:{GOLD};">very large price swings</b> before September.
+          That expectation is captured by the implied volatility.
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""<div class="metric" style="margin-top:16px;">
+          <div class="metric-val" style="font-size:3rem;">{sigma_iv*100:.1f}%</div>
+          <div class="metric-lbl">Implied Volatility — extracted by bisection search</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""<div style="margin-top:16px; font-size:0.85rem; color:{MUT}; line-height:1.7;">
+          A typical stock has σ ≈ 20–30%. SpaceX/SPCX shows 107% because
+          it is a newly listed stock with no price history and high uncertainty.
+          The market charges a large premium to compensate for that risk.
+        </div>""", unsafe_allow_html=True)
+
+    with col_r:
+        st.markdown("### Model output")
+        c1, c2 = st.columns(2)
+        c1.markdown(f"""<div class="metric">
+          <div class="metric-val">${b_am:.2f}</div>
+          <div class="metric-lbl">Binomial American put</div>
+        </div>""", unsafe_allow_html=True)
+        c2.markdown(f"""<div class="metric">
+          <div class="metric-val">${l_am:.2f}</div>
+          <div class="metric-lbl">LSMC American put</div>
+        </div>""", unsafe_allow_html=True)
+
+        c3, c4 = st.columns(2)
+        c3.markdown(f"""<div class="metric" style="margin-top:8px;">
+          <div class="metric-val">${b_eu:.2f}</div>
+          <div class="metric-lbl">Binomial European put</div>
+        </div>""", unsafe_allow_html=True)
+        c4.markdown(f"""<div class="metric" style="margin-top:8px;">
+          <div class="metric-val" style="color:{GRN};">${ee:.4f}</div>
+          <div class="metric-lbl">Early exercise premium</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""<div class="highlight" style="margin-top:16px;">
+          The early exercise premium is only <b style="color:{GRN};">${ee:.4f}</b> —
+          less than 0.3% of the $11.30 price.<br><br>
+          This is a <b style="color:{GOLD};">volatility story</b>, not an early exercise story.
+          Both methods agree closely, which validates the models.
+        </div>""", unsafe_allow_html=True)
+
+        # Mini bar chart: what makes up the price
+        fig_split = go.Figure(go.Bar(
+            x=["European put value", "Early exercise premium"],
+            y=[b_eu, ee],
+            marker_color=[BLUE, GOLD],
+            text=[f"${b_eu:.2f}", f"${ee:.4f}"],
+            textposition="outside",
+            textfont=dict(color=TXT, size=12),
+        ))
+        fig_split.update_layout(
+            paper_bgcolor=BG, plot_bgcolor=BG2,
+            font=dict(color=TXT, family="Inter", size=12),
+            xaxis=dict(gridcolor=BD, linecolor=BD, color=MUT),
+            yaxis=dict(gridcolor=BD, linecolor=BD, color=MUT,
+                       title="USD", range=[0, b_am * 1.18]),
+            margin=dict(l=50, r=20, t=40, b=40), height=230,
+            title=dict(text="Price decomposition (per share)",
+                       font=dict(size=12, color=GLD2)),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_split, use_container_width=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  5 · TAKEAWAYS
 # ══════════════════════════════════════════════════════════════════════════════
 elif slide == 5:
-    st.markdown("## 📌 Conclusion")
+    st.markdown(f'<div class="section-label">Conclusion</div>', unsafe_allow_html=True)
+    st.markdown("## Key Takeaways")
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3, gap="large")
+
     with c1:
-        st.markdown("### Method Comparison")
-        comp = pd.DataFrame({
-            "Criterion":     ["Transparency", "Speed", "Accuracy",
-                              "Flexibility", "Best for"],
-            "Binomial Tree": ["⭐⭐⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐",
-                              "⭐⭐", "Teaching & single underlying"],
-            "LSMC":          ["⭐⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐",
-                              "⭐⭐⭐⭐⭐", "Complex/multi-factor options"],
-        })
-        st.dataframe(comp, hide_index=True, use_container_width=True)
+        st.markdown(f"""<div class="metric" style="height:160px; display:flex; flex-direction:column; justify-content:center;">
+          <div class="metric-val" style="font-size:2rem;">Binomial Tree</div>
+          <div class="metric-lbl" style="margin-top:14px; line-height:1.6;">
+            Most transparent method.<br>
+            Every node shows exactly when and why early exercise is optimal.
+          </div>
+        </div>""", unsafe_allow_html=True)
 
-        st.markdown("### Black–Scholes Role")
-        st.markdown("""<div class='warn'>
-        Black–Scholes is used <b>only as a European benchmark</b> to validate
-        the binomial tree's convergence. It <em>cannot</em> price American options
-        because it does not model the early exercise decision.
+        st.markdown(f"""<div class="step-row" style="margin-top:12px;">
+          <div class="step-num" style="font-size:1.2rem;">→</div>
+          <div class="step-body">
+            European price converges to Black–Scholes as N → ∞.<br>
+            N = 200 is sufficient for 4-decimal accuracy.
+          </div>
         </div>""", unsafe_allow_html=True)
 
     with c2:
-        st.markdown("### SpaceX/SPCX Findings")
-        for label, val, note in [
-            ("Implied Volatility", "107.4%",
-             "Consistent with a newly-listed stock where the market expects extreme moves"),
-            ("Binomial American Put", "11.30 USD",
-             "Calibrated exactly to the market premium — confirms the model"),
-            ("Early Exercise Premium", "0.03 USD",
-             "Just 0.3% of the option value — early exercise is almost irrelevant here"),
-            ("LSMC American Put", "≈ 11.30 USD",
-             "Both methods agree closely — confirming robustness of the result"),
-        ]:
-            st.markdown(f"""<div class='step'>
-            <div class='step-num'>{label}</div>
-            <div class='step-head'>{val}</div>
-            <div class='step-body'>{note}</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric" style="height:160px; display:flex; flex-direction:column; justify-content:center;">
+          <div class="metric-val" style="font-size:2rem;">LSMC</div>
+          <div class="metric-lbl" style="margin-top:14px; line-height:1.6;">
+            Same answer via simulation.<br>
+            More flexible — scales to complex multi-factor options.
+          </div>
+        </div>""", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("""<div class='ans'>
-    <b>Main conclusion:</b> For the SpaceX/SPCX September 135 put,
-    the 1,130 USD contract price is almost entirely a <em>volatility story</em>
-    — not an early exercise story. The option is deeply out of the money
-    (stock at 201.80 vs. strike at 135), so immediate exercise is never attractive.
-    The market's expectation of extreme price movements — reflected in an implied
-    volatility of ~107% — is what drives the premium.
-    The American early exercise feature is present and correctly modelled,
-    but contributes only ~0.03 USD to the 11.30 USD price.
-    </div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="step-row" style="margin-top:12px;">
+          <div class="step-num" style="font-size:1.2rem;">→</div>
+          <div class="step-body">
+            Small differences from binomial are normal —
+            simulation noise and regression approximation, not errors.
+          </div>
+        </div>""", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown(
-        "*Frankfurt University of Applied Sciences · Computer Based Investment Analysis · "
-        "Summer Semester 2026*  \n"
-        "Ilyos Umurzakov (1615067) · Leon Ye (1616910)  \n"
-        "Lecturers: Ferdinand Wöhrle · Lukas Müller")
+    with c3:
+        S0, K, r, T = 201.80, 135, 0.037, 93/365
+        sigma_iv = implied_vol(11.30, S0, K, r, T, 200)
+        b_am = binomial_price(S0, K, r, sigma_iv, T, 200, american=True)
+        b_eu = binomial_price(S0, K, r, sigma_iv, T, 200, american=False)
+        ee   = b_am - b_eu
+
+        st.markdown(f"""<div class="metric" style="height:160px; display:flex; flex-direction:column; justify-content:center;">
+          <div class="metric-val" style="font-size:2rem;">SpaceX/SPCX</div>
+          <div class="metric-lbl" style="margin-top:14px; line-height:1.6;">
+            $1,130 contract price explained by<br>
+            107% implied volatility — not early exercise.
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""<div class="step-row" style="margin-top:12px;">
+          <div class="step-num" style="font-size:1.2rem;">→</div>
+          <div class="step-body">
+            Early exercise premium = ${ee:.4f} out of $11.30.<br>
+            Less than 0.3% of the total option value.
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("<hr class='divider' style='margin-top:32px;'>", unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div style="background:{BG2}; border:1px solid {GOLD}44;
+                border-radius:12px; padding:28px 36px; margin-top:8px; text-align:center;">
+      <div style="font-size:1.25rem; font-weight:700; color:{TXT}; line-height:1.8;">
+        The SpaceX/SPCX put option is a <span style="color:{GOLD};">volatility story</span>,
+        not an early exercise story.<br>
+        Both numerical methods confirm the same result — giving us confidence in the pricing.
+      </div>
+      <div style="margin-top:20px; font-size:0.82rem; color:{MUT};">
+        Frankfurt UAS &nbsp;·&nbsp; Computer Based Investment Analysis &nbsp;·&nbsp;
+        Ilyos Umurzakov · Leon Ye &nbsp;·&nbsp; Summer 2026
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
