@@ -121,6 +121,18 @@ def black_scholes_put(S0, K, r, sigma, T):
 
 
 @st.cache_data
+def black_scholes(S0, K, r, sigma, T, option="put"):
+    from scipy.stats import norm
+    if T <= 0 or sigma <= 0:
+        return max(K - S0, 0) if option == "put" else max(S0 - K, 0)
+    d1 = (math.log(S0 / K) + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
+    d2 = d1 - sigma * math.sqrt(T)
+    if option == "put":
+        return K * math.exp(-r * T) * norm.cdf(-d2) - S0 * norm.cdf(-d1)
+    return S0 * norm.cdf(d1) - K * math.exp(-r * T) * norm.cdf(d2)
+
+
+@st.cache_data
 def lsmc_put(S0, K, r, sigma, T, M=20000, N=50, seed=42):
     rng = np.random.default_rng(seed)
     dt  = T / N
@@ -141,6 +153,35 @@ def lsmc_put(S0, K, r, sigma, T, M=20000, N=50, seed=42):
         coef, *_ = np.linalg.lstsq(A, Y, rcond=None)
         cont = A @ coef
         ex   = np.maximum(K - X, 0)
+        idx  = np.where(itm)[0][ex > cont]
+        payoff[idx] = ex[ex > cont]
+    return float(np.mean(payoff) * math.exp(-r * T))
+
+
+@st.cache_data
+def lsmc_price(S0, K, r, sigma, T, option="put", M=12000, N=50, seed=42):
+    rng = np.random.default_rng(seed)
+    dt  = T / N
+    Z   = rng.standard_normal((M, N))
+    S   = np.zeros((M, N + 1)); S[:, 0] = S0
+    for t in range(N):
+        S[:, t + 1] = S[:, t] * np.exp(
+            (r - 0.5 * sigma**2) * dt + sigma * math.sqrt(dt) * Z[:, t]
+        )
+    intrinsic = (lambda x: np.maximum(K - x, 0)) if option == "put" \
+        else (lambda x: np.maximum(x - K, 0))
+    payoff = intrinsic(S[:, -1])
+    for t in range(N - 1, 0, -1):
+        ex_now = intrinsic(S[:, t])
+        itm = ex_now > 0
+        if itm.sum() < 5:
+            continue
+        X    = S[itm, t]
+        Y    = payoff[itm] * math.exp(-r * dt)
+        A    = np.column_stack([np.ones_like(X), X, X**2])
+        coef, *_ = np.linalg.lstsq(A, Y, rcond=None)
+        cont = A @ coef
+        ex   = ex_now[itm]
         idx  = np.where(itm)[0][ex > cont]
         payoff[idx] = ex[ex > cont]
     return float(np.mean(payoff) * math.exp(-r * T))
@@ -293,21 +334,49 @@ def fig_tree():
 
 @st.cache_data
 def fig_mc_paths():
+    K = 135
     S = simulate_paths(201.80, 0.037, 1.074, 93/365)
     t = np.linspace(0, 93/365, 94)
     fig = go.Figure()
-    for i in range(120):
+
+    # Split the displayed sample by terminal moneyness so the paths that
+    # actually make the put pay off stand out on a projector.
+    n_show  = 110
+    otm_idx = [i for i in range(n_show) if S[i, -1] >= K]   # expire worthless
+    itm_idx = [i for i in range(n_show) if S[i, -1] <  K]   # put pays off
+
+    # Worthless paths first (faded cyan), then in-the-money on top (bold red).
+    for i in otm_idx:
         fig.add_trace(go.Scatter(
             x=t, y=S[i], mode="lines",
-            line=dict(color="rgba(0,212,255,0.06)", width=1),
-            showlegend=False, hoverinfo="skip",
-        ))
-    fig.add_hline(y=135, line=dict(color="#ff4757", dash="dot", width=1.8),
-                  annotation_text="Strike K=$135", annotation_font_color="#ff4757")
-    fig.add_hline(y=201.80, line=dict(color=GOLD, dash="dash", width=1.2),
-                  annotation_text="S0=$201.80", annotation_font_color=GOLD)
-    fig.update_layout(**chart_layout("GBM Simulation — SPCX (1,000 paths, σ=107%)"))
-    fig.update_layout(xaxis_title="Time (years)", yaxis_title="Price ($)")
+            line=dict(color="rgba(0,212,255,0.22)", width=1.1),
+            showlegend=False, hoverinfo="skip"))
+    for i in itm_idx:
+        fig.add_trace(go.Scatter(
+            x=t, y=S[i], mode="lines",
+            line=dict(color="rgba(255,71,87,0.6)", width=1.9),
+            showlegend=False, hoverinfo="skip"))
+
+    # Average path — thick white line so the drift is obvious.
+    fig.add_trace(go.Scatter(
+        x=t, y=S.mean(axis=0), mode="lines",
+        line=dict(color="#ffffff", width=3.5), name="Average path"))
+
+    # Legend proxies for the two path colours.
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
+        line=dict(color="#ff4757", width=4), name="Ends in-the-money (put pays off)"))
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
+        line=dict(color="#00d4ff", width=4), name="Expires worthless"))
+
+    fig.add_hline(y=K, line=dict(color="#ffd93d", dash="dash", width=2.6),
+                  annotation_text="Strike K = $135", annotation_font_color="#ffd93d",
+                  annotation_font_size=14)
+    fig.add_hline(y=201.80, line=dict(color=GOLD, dash="dot", width=1.8),
+                  annotation_text="Spot S₀ = $201.80", annotation_font_color=GOLD,
+                  annotation_font_size=13)
+    fig.update_layout(**chart_layout("Monte Carlo Simulation — SPCX price paths (σ = 107%, 93 days)", h=460))
+    fig.update_layout(xaxis_title="Time to expiry (years)", yaxis_title="Simulated price ($)",
+                      legend=dict(orientation="h", y=1.13, x=0, font=dict(size=13)))
     return fig, S
 
 
@@ -665,8 +734,80 @@ with sp2:
 st.markdown("<hr class='divider'>", unsafe_allow_html=True)
 
 
-# ── 05 TAKEAWAYS ─────────────────────────────────────────────────────────────
-st.markdown('<div class="section-tag">05 · Takeaways</div>', unsafe_allow_html=True)
+# ── 05 INTERACTIVE CALCULATOR ────────────────────────────────────────────────
+st.markdown('<div class="section-tag">05 · Try It Yourself</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Interactive Pricing Calculator</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-sub">Move the sliders — both methods re-price live. Watch how the early-exercise premium grows as the option goes deeper in-the-money.</div>', unsafe_allow_html=True)
+
+ic1, ic2 = st.columns([2, 3])
+
+with ic1:
+    st.markdown('<div style="font-size:13px;font-weight:700;color:#00d4ff;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;">Parameters</div>', unsafe_allow_html=True)
+    opt_type = st.radio("Option type", ["Put", "Call"], horizontal=True, key="calc_opt")
+    opt = opt_type.lower()
+    S0_i  = st.slider("Spot price  S₀ ($)", 10.0, 400.0, 201.80, step=1.0, key="calc_S0")
+    K_i   = st.slider("Strike  K ($)", 10.0, 400.0, 135.0, step=1.0, key="calc_K")
+    sig_i = st.slider("Volatility  σ (%)", 5.0, 150.0, 60.0, step=1.0, key="calc_sig") / 100
+    T_days = st.slider("Time to expiry (days)", 7, 730, 93, step=1, key="calc_T")
+    T_i   = T_days / 365
+    r_i   = st.slider("Risk-free rate  r (%)", 0.0, 10.0, 3.7, step=0.1, key="calc_r") / 100
+    N_i   = st.select_slider("Binomial steps  N", options=[25, 50, 100, 200, 500], value=200, key="calc_N")
+
+# live pricing (all cached by argument tuple)
+am_i   = binomial_price(S0_i, K_i, r_i, sig_i, T_i, N=N_i, option=opt, american=True)
+eu_i   = binomial_price(S0_i, K_i, r_i, sig_i, T_i, N=N_i, option=opt, american=False)
+bs_i   = black_scholes(S0_i, K_i, r_i, sig_i, T_i, option=opt)
+lsmc_i = lsmc_price(S0_i, K_i, r_i, sig_i, T_i, option=opt)
+prem_i = max(am_i - eu_i, 0.0)
+intrinsic_i = max(K_i - S0_i, 0) if opt == "put" else max(S0_i - K_i, 0)
+
+with ic2:
+    r1c1, r1c2 = st.columns(2)
+    with r1c1:
+        st.markdown(f'<div class="stat-card"><div class="stat-number" style="color:{GREEN};">${am_i:.2f}</div>'
+                    f'<div class="stat-label">American ({opt_type}) — Binomial CRR</div></div>', unsafe_allow_html=True)
+    with r1c2:
+        st.markdown(f'<div class="stat-card"><div class="stat-number" style="color:{PRP};">${lsmc_i:.2f}</div>'
+                    f'<div class="stat-label">American ({opt_type}) — LSMC Monte Carlo</div></div>', unsafe_allow_html=True)
+    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+    r2c1, r2c2 = st.columns(2)
+    with r2c1:
+        st.markdown(f'<div class="stat-card"><div class="stat-number" style="color:{CYAN};font-size:30px;">${bs_i:.2f}</div>'
+                    f'<div class="stat-label">European — Black-Scholes</div></div>', unsafe_allow_html=True)
+    with r2c2:
+        st.markdown(f'<div class="stat-card"><div class="stat-number" style="color:{GOLD};font-size:30px;">${prem_i:.3f}</div>'
+                    f'<div class="stat-label">Early-exercise premium</div></div>', unsafe_allow_html=True)
+
+    moneyness = ("in-the-money" if intrinsic_i > 0 else "out-of-the-money")
+    if prem_i < 0.01:
+        note = (f"The {opt_type.lower()} is {moneyness} with intrinsic value ${intrinsic_i:.2f}. "
+                f"The early-exercise premium is essentially zero — holding dominates exercising early, "
+                f"so the American and European prices nearly coincide.")
+    else:
+        note = (f"The {opt_type.lower()} is {moneyness} with intrinsic value ${intrinsic_i:.2f}. "
+                f"The American right to exercise early is worth <strong style='color:#ffa502;'>${prem_i:.3f}</strong> "
+                f"more than the European equivalent — that is the early-exercise premium.")
+    st.markdown(f'<div class="info-box"><div style="font-size:14px;color:rgba(255,255,255,0.78);line-height:1.6;">{note}</div></div>',
+                unsafe_allow_html=True)
+
+# live decomposition bar
+calc_fig = go.Figure(go.Bar(
+    x=["European<br>(Black-Scholes)", "Early Exercise<br>Premium", "American<br>(Binomial CRR)"],
+    y=[bs_i, prem_i, am_i],
+    marker_color=[CYAN, GOLD, GREEN],
+    text=[f"${bs_i:.2f}", f"${prem_i:.3f}", f"${am_i:.2f}"],
+    textposition="outside", textfont=dict(size=15, color="white"),
+    width=0.5,
+))
+calc_fig.update_layout(**chart_layout(f"Live Price Decomposition — American {opt_type}", h=320))
+calc_fig.update_layout(yaxis_title="Option value ($)", xaxis=dict(gridcolor="rgba(0,0,0,0)"))
+st.plotly_chart(calc_fig, use_container_width=True)
+
+st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+
+# ── 06 TAKEAWAYS ─────────────────────────────────────────────────────────────
+st.markdown('<div class="section-tag">06 · Takeaways</div>', unsafe_allow_html=True)
 st.markdown('<div class="section-title">What We Learned</div>', unsafe_allow_html=True)
 
 st.markdown("""
