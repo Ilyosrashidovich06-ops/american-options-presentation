@@ -334,49 +334,22 @@ def fig_tree():
 
 @st.cache_data
 def fig_mc_paths():
-    K = 135
     S = simulate_paths(201.80, 0.037, 1.074, 93/365)
     t = np.linspace(0, 93/365, 94)
     fig = go.Figure()
-
-    # Split the displayed sample by terminal moneyness so the paths that
-    # actually make the put pay off stand out on a projector.
-    n_show  = 110
-    otm_idx = [i for i in range(n_show) if S[i, -1] >= K]   # expire worthless
-    itm_idx = [i for i in range(n_show) if S[i, -1] <  K]   # put pays off
-
-    # Worthless paths first (faded cyan), then in-the-money on top (bold red).
-    for i in otm_idx:
+    for i in range(140):
         fig.add_trace(go.Scatter(
             x=t, y=S[i], mode="lines",
-            line=dict(color="rgba(0,212,255,0.22)", width=1.1),
+            line=dict(color="rgba(0,212,255,0.14)", width=1),
             showlegend=False, hoverinfo="skip"))
-    for i in itm_idx:
-        fig.add_trace(go.Scatter(
-            x=t, y=S[i], mode="lines",
-            line=dict(color="rgba(255,71,87,0.6)", width=1.9),
-            showlegend=False, hoverinfo="skip"))
-
-    # Average path — thick white line so the drift is obvious.
-    fig.add_trace(go.Scatter(
-        x=t, y=S.mean(axis=0), mode="lines",
-        line=dict(color="#ffffff", width=3.5), name="Average path"))
-
-    # Legend proxies for the two path colours.
-    fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
-        line=dict(color="#ff4757", width=4), name="Ends in-the-money (put pays off)"))
-    fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
-        line=dict(color="#00d4ff", width=4), name="Expires worthless"))
-
-    fig.add_hline(y=K, line=dict(color="#ffd93d", dash="dash", width=2.6),
-                  annotation_text="Strike K = $135", annotation_font_color="#ffd93d",
-                  annotation_font_size=14)
-    fig.add_hline(y=201.80, line=dict(color=GOLD, dash="dot", width=1.8),
+    fig.add_hline(y=135, line=dict(color="#ff4757", dash="dot", width=2),
+                  annotation_text="Strike K = $135", annotation_font_color="#ff4757",
+                  annotation_font_size=13)
+    fig.add_hline(y=201.80, line=dict(color=GOLD, dash="dash", width=1.4),
                   annotation_text="Spot S₀ = $201.80", annotation_font_color=GOLD,
                   annotation_font_size=13)
-    fig.update_layout(**chart_layout("Monte Carlo Simulation — SPCX price paths (σ = 107%, 93 days)", h=460))
-    fig.update_layout(xaxis_title="Time to expiry (years)", yaxis_title="Simulated price ($)",
-                      legend=dict(orientation="h", y=1.13, x=0, font=dict(size=13)))
+    fig.update_layout(**chart_layout("Monte Carlo Simulation — SPCX (1,000 paths, σ = 107%)"))
+    fig.update_layout(xaxis_title="Time to expiry (years)", yaxis_title="Simulated price ($)")
     return fig, S
 
 
@@ -672,72 +645,10 @@ with mc2:
 
 st.plotly_chart(fig_dist(S_paths), use_container_width=True)
 
-st.markdown("<hr class='divider'>", unsafe_allow_html=True)
-
-
-# ── 04 SPACEX CASE STUDY ─────────────────────────────────────────────────────
-st.markdown('<div class="section-tag">04 · Case Study</div>', unsafe_allow_html=True)
-st.markdown('<div class="section-title">SPCX — SpaceX Put Option</div>', unsafe_allow_html=True)
-st.markdown(f'<div class="section-sub">SPCX is a publicly traded fund with indirect SpaceX exposure. We price a real put option (K=$135, 93 days, market price $11.30) and extract implied volatility by inverting the binomial model.</div>', unsafe_allow_html=True)
-
-k1, k2, k3, k4 = st.columns(4)
-for col, num, lbl, color in [
-    (k1, "$201.80", "Current Price S0", CYAN),
-    (k2, f"{sig_iv*100:.1f}%", "Implied Volatility", GREEN),
-    (k3, f"${am_spx:.2f}", "American Put (CRR)", CYAN),
-    (k4, f"${lsmc_v:.2f}", "LSMC Put Price", PRP),
-]:
-    with col:
-        st.markdown(f'<div class="stat-card"><div class="stat-number" style="color:{color};">'
-                    f'{num}</div><div class="stat-label">{lbl}</div></div>', unsafe_allow_html=True)
-
+# ── Pricing Calculator (inside Method 2) ─────────────────────────────────────
 st.markdown("<br>", unsafe_allow_html=True)
-
-sp1, sp2 = st.columns([2, 3])
-with sp1:
-    st.markdown(f"""
-    <div class="card" style="border-color:rgba(0,255,136,0.2);">
-      <div style="font-size:13px;font-weight:700;color:#00ff88;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;">Key Findings</div>
-
-      <div style="margin-bottom:16px;">
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">Implied vol = {sig_iv*100:.1f}%</div>
-        <div style="font-size:13px;color:rgba(255,255,255,0.56);line-height:1.6;">
-          Exceptionally high. Reflects SpaceX's status as a private company with limited price discovery — not historical stock volatility.
-        </div>
-      </div>
-
-      <div style="margin-bottom:16px;">
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">Early exercise premium = ${prem:.4f}</div>
-        <div style="font-size:13px;color:rgba(255,255,255,0.56);line-height:1.6;">
-          Essentially zero. The put is deep out of the money (S=$201 vs K=$135), so exercising early almost never makes sense.
-        </div>
-      </div>
-
-      <div>
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">CRR and LSMC agree</div>
-        <div style="font-size:13px;color:rgba(255,255,255,0.56);line-height:1.6;">
-          Both methods converge to the same price, confirming model consistency across completely different mathematical approaches.
-        </div>
-      </div>
-
-      <div style="margin-top:20px;display:flex;flex-wrap:wrap;gap:6px;">
-        <span class="chip chip-blue">K = $135</span>
-        <span class="chip chip-purple">T = 93 days</span>
-        <span class="chip" style="background:rgba(255,165,2,0.12);border:1px solid rgba(255,165,2,0.3);color:#ffa502;">r = 3.7%</span>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with sp2:
-    st.plotly_chart(fig_decomp(am_spx, eu_spx, prem), use_container_width=True)
-
-st.markdown("<hr class='divider'>", unsafe_allow_html=True)
-
-
-# ── 05 INTERACTIVE CALCULATOR ────────────────────────────────────────────────
-st.markdown('<div class="section-tag">05 · Try It Yourself</div>', unsafe_allow_html=True)
-st.markdown('<div class="section-title">Interactive Pricing Calculator</div>', unsafe_allow_html=True)
-st.markdown('<div class="section-sub">Move the sliders — both methods re-price live. Watch how the early-exercise premium grows as the option goes deeper in-the-money.</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title" style="font-size:30px;">Pricing Calculator</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-sub" style="margin-bottom:24px;">Price any American option with both methods side by side.</div>', unsafe_allow_html=True)
 
 ic1, ic2 = st.columns([2, 3])
 
@@ -806,8 +717,67 @@ st.plotly_chart(calc_fig, use_container_width=True)
 st.markdown("<hr class='divider'>", unsafe_allow_html=True)
 
 
-# ── 06 TAKEAWAYS ─────────────────────────────────────────────────────────────
-st.markdown('<div class="section-tag">06 · Takeaways</div>', unsafe_allow_html=True)
+# ── 04 SPACEX CASE STUDY ─────────────────────────────────────────────────────
+st.markdown('<div class="section-tag">04 · Case Study</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">SPCX — SpaceX Put Option</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="section-sub">SPCX is a publicly traded fund with indirect SpaceX exposure. We price a real put option (K=$135, 93 days, market price $11.30) and extract implied volatility by inverting the binomial model.</div>', unsafe_allow_html=True)
+
+k1, k2, k3, k4 = st.columns(4)
+for col, num, lbl, color in [
+    (k1, "$201.80", "Current Price S0", CYAN),
+    (k2, f"{sig_iv*100:.1f}%", "Implied Volatility", GREEN),
+    (k3, f"${am_spx:.2f}", "American Put (CRR)", CYAN),
+    (k4, f"${lsmc_v:.2f}", "LSMC Put Price", PRP),
+]:
+    with col:
+        st.markdown(f'<div class="stat-card"><div class="stat-number" style="color:{color};">'
+                    f'{num}</div><div class="stat-label">{lbl}</div></div>', unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+sp1, sp2 = st.columns([2, 3])
+with sp1:
+    st.markdown(f"""
+    <div class="card" style="border-color:rgba(0,255,136,0.2);">
+      <div style="font-size:13px;font-weight:700;color:#00ff88;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;">Key Findings</div>
+
+      <div style="margin-bottom:16px;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">Implied vol = {sig_iv*100:.1f}%</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.56);line-height:1.6;">
+          Exceptionally high. Reflects SpaceX's status as a private company with limited price discovery — not historical stock volatility.
+        </div>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">Early exercise premium = ${prem:.4f}</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.56);line-height:1.6;">
+          Essentially zero. The put is deep out of the money (S=$201 vs K=$135), so exercising early almost never makes sense.
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">CRR and LSMC agree</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.56);line-height:1.6;">
+          Both methods converge to the same price, confirming model consistency across completely different mathematical approaches.
+        </div>
+      </div>
+
+      <div style="margin-top:20px;display:flex;flex-wrap:wrap;gap:6px;">
+        <span class="chip chip-blue">K = $135</span>
+        <span class="chip chip-purple">T = 93 days</span>
+        <span class="chip" style="background:rgba(255,165,2,0.12);border:1px solid rgba(255,165,2,0.3);color:#ffa502;">r = 3.7%</span>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with sp2:
+    st.plotly_chart(fig_decomp(am_spx, eu_spx, prem), use_container_width=True)
+
+st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+
+# ── 05 TAKEAWAYS ─────────────────────────────────────────────────────────────
+st.markdown('<div class="section-tag">05 · Takeaways</div>', unsafe_allow_html=True)
 st.markdown('<div class="section-title">What We Learned</div>', unsafe_allow_html=True)
 
 st.markdown("""
